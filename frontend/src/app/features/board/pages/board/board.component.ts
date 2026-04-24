@@ -313,8 +313,10 @@ handleKeyup(event: KeyboardEvent): void {
     if (this.currentTool === 'pen' || this.currentTool === 'eraser') {
       this.mainCtx.beginPath();
       this.mainCtx.moveTo(point.x, point.y);
-      this.mainCtx.strokeStyle =
-        this.currentTool === 'eraser' ? '#0f0f1a' : this.currentColor;
+     const eraserColor = getComputedStyle(document.documentElement)
+  .getPropertyValue('--canvas-bg').trim();
+this.mainCtx.strokeStyle =
+  this.currentTool === 'eraser' ? eraserColor : this.currentColor;
       this.mainCtx.lineWidth =
         this.currentTool === 'eraser' ? 20 : this.currentWidth;
     }

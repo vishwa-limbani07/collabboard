@@ -5,6 +5,9 @@
       <h1 class="logo">CollabBoard</h1>
     </div>
     <div class="topbar-right">
+      <button class="theme-toggle" (click)="cycleTheme()" title="Toggle theme">
+    {{ getThemeIcon() }} {{ getThemeLabel() }}
+  </button>
       <div class="user-info">
         <div class="avatar">{{ currentUser ? getInitials(currentUser.name) : '?' }}</div>
         <span class="user-name">{{ currentUser?.name }}</span>

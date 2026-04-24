@@ -6,6 +6,7 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { BoardService } from '../../../../core/services/board.service';
 import { Board } from '../../../../core/models/board.model';
 import { User } from '../../../../core/models/user.model';
+import { Theme, ThemeService } from '../../../../core/services/theme.service';
 
 @Component({
   selector: 'app-dashboard',
@@ -36,7 +37,9 @@ export class DashboardComponent implements OnInit {
     private authService: AuthService,
     private boardService: BoardService,
     private router: Router,
-      private cdr: ChangeDetectorRef
+      private cdr: ChangeDetectorRef,
+        public themeService: ThemeService,
+
   ) {}
 
   ngOnInit(): void {
@@ -147,5 +150,24 @@ createBoard(): void {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
+}
+cycleTheme(): void {
+  const current = this.themeService.getTheme();
+  const next: Theme = current === 'dark' ? 'light' : current === 'light' ? 'system' : 'dark';
+  this.themeService.setTheme(next);
+}
+
+getThemeIcon(): string {
+  const theme = this.themeService.getTheme();
+  if (theme === 'dark') return '🌙';
+  if (theme === 'light') return '☀️';
+  return '💻';
+}
+
+getThemeLabel(): string {
+  const theme = this.themeService.getTheme();
+  if (theme === 'dark') return 'Dark';
+  if (theme === 'light') return 'Light';
+  return 'System';
 }
 }
