@@ -178,13 +178,20 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
       this.onlineUsers = users;
       this.cdr.detectChanges();
     });
-
+    // Load saved strokes when joining a board
+    const loadSub = this.socketService.on('load-strokes').subscribe((strokes: Stroke[]) => {
+      console.log('Loading', strokes.length, 'saved strokes');
+      this.strokes = strokes;
+      // Redraw all strokes on canvas
+      this.redrawCanvas();
+      this.cdr.detectChanges();
+    });
     // Clear board event
     const clearSub = this.socketService.on('clear-board').subscribe(() => {
       this.clearCanvas();
     });
 
-    this.subscriptions.push(drawSub, cursorSub, joinSub, leaveSub, roomSub, clearSub);
+this.subscriptions.push(drawSub, cursorSub, joinSub, leaveSub, roomSub, clearSub, loadSub);
   }
 
   // ─── DRAWING METHODS ───
@@ -306,7 +313,15 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.ctx.clearRect(0, 0, canvas.width, canvas.height);
     this.strokes = [];
   }
+private redrawCanvas(): void {
+  const canvas = this.canvasRef.nativeElement;
+  this.ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // Redraw all saved strokes
+  for (const stroke of this.strokes) {
+    this.drawStroke(stroke);
+  }
+}
   // ─── TOOLBAR ACTIONS ───
   setColor(color: string): void {
     this.currentColor = color;

@@ -6,16 +6,7 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import type {
-  UserData,
-  JoinBoardData,
-  DrawData,
-  CursorMoveData,
-  ShapeData,
-  StickyData,
-  UndoData,
-  ClearBoardData,
-} from './board.gateway.types';
+import { ShapesService } from '../shapes/shapes.service';
 
 @WebSocketGateway({
   cors: {
@@ -23,11 +14,15 @@ import type {
     credentials: true,
   },
 })
-export class BoardGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class BoardGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
-  private activeUsers = new Map<string, UserData>();
+  private activeUsers = new Map();
+
+  constructor(private shapesService: ShapesService) {}
 
   handleConnection(client: Socket) {
     console.log('Client connected:', client.id);
@@ -46,8 +41,8 @@ export class BoardGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('join-board')
-  async handleJoinBoard(client: Socket, data: JoinBoardData) {
-    await client.join(data.boardId);
+  async handleJoinBoard(client: Socket, data: any) {
+    client.join(data.boardId);
 
     this.activeUsers.set(client.id, {
       userId: data.userId,
@@ -61,16 +56,43 @@ export class BoardGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
 
     const usersInRoom = Array.from(this.activeUsers.values()).filter(
-      (u: UserData) => u.boardId === data.boardId,
+      (u: any) => u.boardId === data.boardId,
     );
     client.emit('room-users', usersInRoom);
 
-    console.log(data.userName, 'joined board', data.boardId);
+    // NEW: Load all saved strokes and send to the joining user
+    try {
+      const savedStrokes = await this.shapesService.getStrokesByBoard(
+        data.boardId,
+      );
+
+      // Convert MongoDB documents to the format the frontend expects
+      const strokes = savedStrokes.map((s) => ({
+        id: s.strokeId,
+        points: s.points,
+        color: s.color,
+        width: s.width,
+        tool: s.tool,
+      }));
+
+      client.emit('load-strokes', strokes);
+      console.log(
+        data.userName,
+        'joined board',
+        data.boardId,
+        '- loaded',
+        strokes.length,
+        'strokes',
+      );
+    } catch (err) {
+      console.error('Error loading strokes:', err);
+      client.emit('load-strokes', []);
+    }
   }
 
   @SubscribeMessage('leave-board')
-  async handleLeaveBoard(client: Socket, data: JoinBoardData) {
-    await client.leave(data.boardId);
+  handleLeaveBoard(client: Socket, data: any) {
+    client.leave(data.boardId);
     const user = this.activeUsers.get(client.id);
     if (user) {
       client.to(data.boardId).emit('user-left', {
@@ -82,27 +104,35 @@ export class BoardGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('draw')
-  handleDraw(client: Socket, data: DrawData) {
+  async handleDraw(client: Socket, data: any) {
+    // Broadcast to others
     client.to(data.boardId).emit('draw', data.stroke);
+
+    // NEW: Save stroke to database
+    try {
+      await this.shapesService.saveStroke(data.boardId, data.stroke);
+    } catch (err) {
+      console.error('Error saving stroke:', err);
+    }
   }
 
   @SubscribeMessage('cursor-move')
-  handleCursorMove(client: Socket, data: CursorMoveData) {
+  handleCursorMove(client: Socket, data: any) {
     client.to(data.boardId).emit('cursor-move', data.cursor);
   }
 
   @SubscribeMessage('add-shape')
-  handleAddShape(client: Socket, data: ShapeData) {
+  handleAddShape(client: Socket, data: any) {
     client.to(data.boardId).emit('add-shape', data.shape);
   }
 
   @SubscribeMessage('add-sticky')
-  handleAddSticky(client: Socket, data: StickyData) {
+  handleAddSticky(client: Socket, data: any) {
     client.to(data.boardId).emit('add-sticky', data.sticky);
   }
 
   @SubscribeMessage('update-sticky')
-  handleUpdateSticky(client: Socket, data: StickyData) {
+  handleUpdateSticky(client: Socket, data: any) {
     client.to(data.boardId).emit('update-sticky', data.sticky);
   }
 
@@ -112,7 +142,15 @@ export class BoardGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('clear-board')
-  handleClearBoard(client: Socket, data: any) {
+  async handleClearBoard(client: Socket, data: any) {
     client.to(data.boardId).emit('clear-board');
+
+    // NEW: Delete all strokes from database
+    try {
+      await this.shapesService.deleteStrokesByBoard(data.boardId);
+      console.log('Cleared all strokes for board', data.boardId);
+    } catch (err) {
+      console.error('Error clearing strokes:', err);
+    }
   }
 }

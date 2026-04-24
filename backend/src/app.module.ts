@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { BoardsModule } from './boards/boards.module';
 import { GatewayModule } from './gateway/gateway.module';
+import { ShapesModule } from './shapes/shapes.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { GatewayModule } from './gateway/gateway.module';
     UsersModule,
     BoardsModule,
     GatewayModule,
+    ShapesModule,
   ],
   controllers: [],
   providers: [],
