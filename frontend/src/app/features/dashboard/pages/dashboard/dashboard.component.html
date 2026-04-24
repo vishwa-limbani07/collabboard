@@ -1,0 +1,146 @@
+<div class="dashboard">
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <h1 class="logo">CollabBoard</h1>
+    </div>
+    <div class="topbar-right">
+      <div class="user-info">
+        <div class="avatar">{{ currentUser ? getInitials(currentUser.name) : '?' }}</div>
+        <span class="user-name">{{ currentUser?.name }}</span>
+      </div>
+      <button class="btn-ghost" (click)="logout()">Logout</button>
+    </div>
+  </header>
+
+  <!-- Main content -->
+  <main class="content">
+    <div class="content-header">
+      <h2>My Boards</h2>
+      <div class="actions">
+        <button class="btn-secondary" (click)="showJoinModal = true">Join Board</button>
+        <button class="btn-primary" (click)="showCreateModal = true">+ New Board</button>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div class="error-message" *ngIf="error">
+      {{ error }}
+      <button class="btn-close" (click)="error = ''">×</button>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading" *ngIf="loading">
+      Loading boards...
+    </div>
+
+    <!-- Empty state -->
+    <div class="empty-state" *ngIf="!loading && boards.length === 0">
+      <div class="empty-icon">🎨</div>
+      <h3>No boards yet</h3>
+      <p>Create your first whiteboard or join one with an invite code</p>
+      <button class="btn-primary" (click)="showCreateModal = true">+ Create Board</button>
+    </div>
+
+    <!-- Board grid -->
+    <div class="board-grid" *ngIf="!loading && boards.length > 0">
+      <div
+        class="board-card"
+        *ngFor="let board of boards"
+        (click)="openBoard(board._id)"
+      >
+        <div class="board-preview" [style.background]="board.backgroundColor || '#1a1a2e'">
+          <div class="board-name">{{ board.name }}</div>
+        </div>
+        <div class="board-info">
+          <div class="board-meta">
+            <span class="board-description">{{ board.description || 'No description' }}</span>
+            <span class="board-time">{{ getTimeAgo(board.updatedAt) }}</span>
+          </div>
+          <div class="board-actions">
+            <button
+              class="btn-icon"
+              title="Copy invite code"
+              (click)="copyInviteCode(board.inviteCode, $event)"
+            >
+              🔗
+            </button>
+            <button
+              class="btn-icon btn-danger"
+              title="Delete board"
+              (click)="deleteBoard(board._id, $event)"
+            >
+              🗑️
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Create Board Modal -->
+  <div class="modal-overlay" *ngIf="showCreateModal" (click)="showCreateModal = false">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h3>Create New Board</h3>
+
+      <div class="form-group">
+        <label>Board Name</label>
+        <input
+          type="text"
+          [(ngModel)]="newBoardName"
+          placeholder="My Awesome Board"
+          (keyup.enter)="createBoard()"
+        />
+      </div>
+
+      <div class="form-group">
+        <label>Description (optional)</label>
+        <input
+          type="text"
+          [(ngModel)]="newBoardDescription"
+          placeholder="What's this board for?"
+          (keyup.enter)="createBoard()"
+        />
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-ghost" (click)="showCreateModal = false">Cancel</button>
+        <button
+          class="btn-primary"
+          (click)="createBoard()"
+          [disabled]="creating || !newBoardName.trim()"
+        >
+          {{ creating ? 'Creating...' : 'Create Board' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Join Board Modal -->
+  <div class="modal-overlay" *ngIf="showJoinModal" (click)="showJoinModal = false">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h3>Join a Board</h3>
+
+      <div class="form-group">
+        <label>Invite Code</label>
+        <input
+          type="text"
+          [(ngModel)]="inviteCode"
+          placeholder="Paste invite code here"
+          (keyup.enter)="joinBoard()"
+        />
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-ghost" (click)="showJoinModal = false">Cancel</button>
+        <button
+          class="btn-primary"
+          (click)="joinBoard()"
+          [disabled]="joining || !inviteCode.trim()"
+        >
+          {{ joining ? 'Joining...' : 'Join Board' }}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

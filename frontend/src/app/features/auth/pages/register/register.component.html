@@ -1,0 +1,58 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <div class="auth-header">
+      <h1>CollabBoard</h1>
+      <p>Create your account</p>
+    </div>
+
+    <div class="error-message" *ngIf="error">
+      {{ error }}
+    </div>
+
+    <div class="form-group">
+      <label for="name">Full Name</label>
+      <input
+        id="name"
+        type="text"
+        [(ngModel)]="name"
+        placeholder="John Doe"
+        (keyup.enter)="onSubmit()"
+      />
+    </div>
+
+    <div class="form-group">
+      <label for="email">Email</label>
+      <input
+        id="email"
+        type="email"
+        [(ngModel)]="email"
+        placeholder="you@example.com"
+        (keyup.enter)="onSubmit()"
+      />
+    </div>
+
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input
+        id="password"
+        type="password"
+        [(ngModel)]="password"
+        placeholder="Minimum 6 characters"
+        (keyup.enter)="onSubmit()"
+      />
+    </div>
+
+    <button
+      class="btn-primary"
+      (click)="onSubmit()"
+      [disabled]="loading || !name || !email || !password"
+    >
+      {{ loading ? 'Creating account...' : 'Create Account' }}
+    </button>
+
+    <p class="auth-footer">
+      Already have an account?
+      <a routerLink="/login">Sign in</a>
+    </p>
+  </div>
+</div>

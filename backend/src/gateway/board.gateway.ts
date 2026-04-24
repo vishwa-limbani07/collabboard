@@ -6,6 +6,16 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import type {
+  UserData,
+  JoinBoardData,
+  DrawData,
+  CursorMoveData,
+  ShapeData,
+  StickyData,
+  UndoData,
+  ClearBoardData,
+} from './board.gateway.types';
 
 @WebSocketGateway({
   cors: {
@@ -13,13 +23,11 @@ import { Server, Socket } from 'socket.io';
     credentials: true,
   },
 })
-export class BoardGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+export class BoardGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  private activeUsers = new Map();
+  private activeUsers = new Map<string, UserData>();
 
   handleConnection(client: Socket) {
     console.log('Client connected:', client.id);
@@ -38,8 +46,8 @@ export class BoardGateway
   }
 
   @SubscribeMessage('join-board')
-  handleJoinBoard(client: Socket, data: any) {
-    client.join(data.boardId);
+  async handleJoinBoard(client: Socket, data: JoinBoardData) {
+    await client.join(data.boardId);
 
     this.activeUsers.set(client.id, {
       userId: data.userId,
@@ -53,7 +61,7 @@ export class BoardGateway
     });
 
     const usersInRoom = Array.from(this.activeUsers.values()).filter(
-      (u: any) => u.boardId === data.boardId,
+      (u: UserData) => u.boardId === data.boardId,
     );
     client.emit('room-users', usersInRoom);
 
@@ -61,8 +69,8 @@ export class BoardGateway
   }
 
   @SubscribeMessage('leave-board')
-  handleLeaveBoard(client: Socket, data: any) {
-    client.leave(data.boardId);
+  async handleLeaveBoard(client: Socket, data: JoinBoardData) {
+    await client.leave(data.boardId);
     const user = this.activeUsers.get(client.id);
     if (user) {
       client.to(data.boardId).emit('user-left', {
@@ -74,27 +82,27 @@ export class BoardGateway
   }
 
   @SubscribeMessage('draw')
-  handleDraw(client: Socket, data: any) {
+  handleDraw(client: Socket, data: DrawData) {
     client.to(data.boardId).emit('draw', data.stroke);
   }
 
   @SubscribeMessage('cursor-move')
-  handleCursorMove(client: Socket, data: any) {
+  handleCursorMove(client: Socket, data: CursorMoveData) {
     client.to(data.boardId).emit('cursor-move', data.cursor);
   }
 
   @SubscribeMessage('add-shape')
-  handleAddShape(client: Socket, data: any) {
+  handleAddShape(client: Socket, data: ShapeData) {
     client.to(data.boardId).emit('add-shape', data.shape);
   }
 
   @SubscribeMessage('add-sticky')
-  handleAddSticky(client: Socket, data: any) {
+  handleAddSticky(client: Socket, data: StickyData) {
     client.to(data.boardId).emit('add-sticky', data.sticky);
   }
 
   @SubscribeMessage('update-sticky')
-  handleUpdateSticky(client: Socket, data: any) {
+  handleUpdateSticky(client: Socket, data: StickyData) {
     client.to(data.boardId).emit('update-sticky', data.sticky);
   }
 
