@@ -1,72 +1,129 @@
-<div class="board-page">
-  <!-- Toolbar -->
-  <div class="toolbar">
-    <div class="toolbar-left">
-      <button class="btn-icon" (click)="goBack()" title="Back to dashboard">←</button>
-      <span class="board-title">{{ board?.name || 'Loading...' }}</span>
-      <button class="share-btn" (click)="shareBoard()" title="Copy invite link">🔗 Share</button>
-    </div>
-
-    <div class="toolbar-center">
-      <button
-        *ngFor="let tool of tools"
-        class="tool-btn"
-        [class.active]="currentTool === tool.id"
-        (click)="setTool(tool.id)"
-        [title]="tool.label"
-      >{{ tool.icon }}</button>
-
-      <div class="divider"></div>
-
-      <button class="tool-btn" [class.active]="isFilled" (click)="toggleFill()" title="Toggle fill">
-        {{ isFilled ? '◼️' : '◻️' }}
+<div class="board-page" (mousemove)="onStickyDrag($event)" (mouseup)="onStickyDragEnd()">
+  <!-- Top bar (minimal) -->
+  <div class="top-bar">
+    <div class="top-left">
+      <button class="icon-btn" (click)="goBack()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       </button>
-
-      <div class="divider"></div>
-
-      <div
-        *ngFor="let color of colors"
-        class="color-dot"
-        [style.background]="color"
-        [class.active]="currentColor === color && currentTool !== 'eraser'"
-        (click)="setColor(color)"
-      ></div>
-
-      <div class="divider"></div>
-
-      <div
-        *ngFor="let w of widths"
-        class="width-btn"
-        [class.active]="currentWidth === w"
-        (click)="setWidth(w)"
-      >
-        <div class="width-preview" [style.width.px]="w" [style.height.px]="w"></div>
-      </div>
-
-      <div class="divider"></div>
-
-      <button class="tool-btn" (click)="undo()" title="Undo (Ctrl+Z)">↩️</button>
-      <button class="tool-btn" (click)="redo()" title="Redo (Ctrl+Y)">↪️</button>
-
-      <div class="divider"></div>
-
-      <button class="tool-btn" (click)="exportAsPng()" title="Export as PNG">📥</button>
-      <button class="tool-btn" (click)="clearBoard()" title="Clear board">🗑️</button>
+      <span class="board-title">{{ board?.name || 'Untitled' }}</span>
     </div>
-
-    <div class="toolbar-right">
-      <div class="zoom-controls">
-        <button class="tool-btn" (click)="zoomOut()" title="Zoom out">−</button>
-        <span class="zoom-level">{{ scale * 100 | number:'1.0-0' }}%</span>
-        <button class="tool-btn" (click)="zoomIn()" title="Zoom in">+</button>
-        <button class="tool-btn" (click)="resetZoom()" title="Reset zoom" style="font-size:12px">↺</button>
-      </div>
-      <div class="online-users">
-        <div *ngFor="let user of onlineUsers" class="online-avatar" [title]="user.userName">
+    <div class="top-right">
+      <button class="share-chip" (click)="shareBoard()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Share
+      </button>
+      <div class="online-dots">
+        <div
+          *ngFor="let user of onlineUsers; let i = index"
+          class="online-dot"
+          [title]="user.userName"
+          [style.zIndex]="onlineUsers.length - i"
+        >
           {{ getInitials(user.userName) }}
         </div>
       </div>
+      <button class="icon-btn" (click)="exportAsPng()" title="Export PNG">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
     </div>
+  </div>
+
+  <!-- Floating toolbar (center bottom) -->
+  <div class="floating-toolbar">
+    <!-- Tools group -->
+    <div class="tool-group">
+      <button
+        *ngFor="let tool of tools"
+        class="toolbar-btn"
+        [class.active]="currentTool === tool.id"
+        (click)="setTool(tool.id)"
+        [title]="tool.label"
+      >
+        <ng-container [ngSwitch]="tool.id">
+          <svg *ngSwitchCase="'pen'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+          <svg *ngSwitchCase="'eraser'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+          <svg *ngSwitchCase="'rect'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+          <svg *ngSwitchCase="'circle'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>
+          <svg *ngSwitchCase="'line'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+          <svg *ngSwitchCase="'arrow'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="9 5 19 5 19 15"/></svg>
+          <svg *ngSwitchCase="'text'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9.5" y1="20" x2="14.5" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+        <svg *ngSwitchCase="'sticky'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><polyline points="14 3 14 8 21 8"/></svg>
+        </ng-container>
+      </button>
+    </div>
+
+    <div class="toolbar-sep"></div>
+
+    <!-- Fill toggle -->
+    <button
+      class="toolbar-btn"
+      [class.active]="isFilled"
+      (click)="toggleFill()"
+      title="Toggle fill"
+    >
+      <svg width="20" height="20" viewBox="0 0 24 24" [attr.fill]="isFilled ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+    </button>
+
+    <div class="toolbar-sep"></div>
+
+    <!-- Colors -->
+    <div class="color-group">
+      <div
+        *ngFor="let color of colors"
+        class="color-swatch"
+        [style.background]="color"
+        [class.active]="currentColor === color && currentTool !== 'eraser'"
+        (click)="setColor(color)"
+      >
+        <svg *ngIf="currentColor === color && currentTool !== 'eraser'" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+    </div>
+
+    <div class="toolbar-sep"></div>
+
+    <!-- Stroke widths -->
+    <div class="width-group">
+      <button
+        *ngFor="let w of widths"
+        class="width-option"
+        [class.active]="currentWidth === w"
+        (click)="setWidth(w)"
+        [title]="w + 'px'"
+      >
+        <span class="width-dot" [style.width.px]="w + 2" [style.height.px]="w + 2"></span>
+      </button>
+    </div>
+
+    <div class="toolbar-sep"></div>
+
+    <!-- Undo / Redo -->
+    <button class="toolbar-btn" (click)="undo()" title="Undo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+    </button>
+    <button class="toolbar-btn" (click)="redo()" title="Redo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+    </button>
+
+    <div class="toolbar-sep"></div>
+
+    <!-- Clear -->
+    <button class="toolbar-btn toolbar-danger" (click)="clearBoard()" title="Clear board">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+    </button>
+  </div>
+
+  <!-- Zoom controls (bottom right) -->
+  <div class="zoom-panel">
+    <button class="zoom-btn" (click)="zoomOut()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <span class="zoom-val">{{ scale * 100 | number:'1.0-0' }}%</span>
+    <button class="zoom-btn" (click)="zoomIn()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button class="zoom-btn" (click)="resetZoom()" title="Reset">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+    </button>
   </div>
 
   <!-- Canvas layers -->
@@ -85,14 +142,58 @@
       (wheel)="onWheel($event)"
     ></canvas>
   </div>
+<!-- Sticky notes -->
+<div
+  *ngFor="let sticky of stickies"
+  class="sticky-note"
+  [style.left.px]="sticky.x"
+  [style.top.px]="sticky.y"
+  [style.width.px]="sticky.width"
+  [style.height.px]="sticky.height"
+  [style.background]="sticky.color"
+  (mousedown)="onStickyMouseDown($event, sticky)"
+  (dblclick)="startEditSticky($event, sticky)"
+>
+<div class="sticky-header" [style.borderBottom]="'1px solid rgba(0,0,0,0.08)'">
+  <div class="sticky-colors">
+    <div
+      *ngFor="let sc of stickyColors"
+      class="sticky-color-dot"
+      [style.background]="sc"
+      [class.active]="sticky.color === sc"
+      (click)="changeStickyColor($event, sticky, sc)"
+    ></div>
+  </div>
+  <button class="sticky-delete" (click)="deleteSticky($event, sticky)">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </button>
+</div>
 
-  <!-- Text input overlay -->
+  <div class="sticky-body" *ngIf="editingSticky?.id !== sticky.id">
+    <span class="sticky-text" [class.placeholder]="!sticky.text">
+      {{ sticky.text || 'Double-click to edit...' }}
+    </span>
+  </div>
+
+  <textarea
+    *ngIf="editingSticky?.id === sticky.id"
+    class="sticky-textarea"
+    [(ngModel)]="sticky.text"
+    (input)="onStickyTextChange(sticky)"
+    (blur)="finishEditSticky()"
+    (click)="$event.stopPropagation()"
+    [style.fontSize.px]="sticky.fontSize"
+    placeholder="Type your note..."
+    autofocus
+  ></textarea>
+</div>
+  <!-- Text input -->
   <input
     *ngIf="showTextInput"
     #textInput
     class="canvas-text-input"
     [style.left.px]="textInputX"
-    [style.top.px]="textInputY + 60"
+    [style.top.px]="textInputY + 52"
     [(ngModel)]="textInputValue"
     (keydown)="onTextKeydown($event)"
     (blur)="submitText()"
@@ -106,12 +207,15 @@
     *ngFor="let cursor of getCursorArray()"
     class="remote-cursor"
     [style.left.px]="cursor.x"
-    [style.top.px]="cursor.y + 60"
+    [style.top.px]="cursor.y + 52"
   >
-    <div class="cursor-dot"></div>
-    <span class="cursor-name">{{ cursor.userName }}</span>
+    <div class="cursor-arrow"></div>
+    <span class="cursor-label">{{ cursor.userName }}</span>
   </div>
 
-  <!-- Copied toast -->
-  <div class="toast" *ngIf="showCopiedToast">Invite link copied to clipboard!</div>
+  <!-- Toast -->
+  <div class="toast" *ngIf="showCopiedToast">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+    Invite link copied!
+  </div>
 </div>

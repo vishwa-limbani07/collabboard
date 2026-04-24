@@ -113,3 +113,15 @@
     }
   }
 }
+.has-error {
+  input {
+    border-color: var(--danger) !important;
+  }
+}
+
+.field-error {
+  display: block;
+  color: var(--danger);
+  font-size: 12px;
+  margin-top: 4px;
+}

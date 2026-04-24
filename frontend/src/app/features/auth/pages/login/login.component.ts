@@ -22,7 +22,40 @@ export class LoginComponent {
     private router: Router,
   ) {}
 
+  emailError = '';
+  passwordError = '';
+
+  validateEmail(): boolean {
+    if (!this.email) {
+      this.emailError = 'Email is required';
+      return false;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.email)) {
+      this.emailError = 'Please enter a valid email address';
+      return false;
+    }
+    this.emailError = '';
+    return true;
+  }
+
+  validatePassword(): boolean {
+    if (!this.password) {
+      this.passwordError = 'Password is required';
+      return false;
+    }
+    if (this.password.length < 6) {
+      this.passwordError = 'Password must be at least 6 characters';
+      return false;
+    }
+    this.passwordError = '';
+    return true;
+  }
+
   onSubmit(): void {
+    const emailValid = this.validateEmail();
+    const passwordValid = this.validatePassword();
+    if (!emailValid || !passwordValid) return;
+
     this.loading = true;
     this.error = '';
 
@@ -31,7 +64,7 @@ export class LoginComponent {
         this.router.navigate(['/dashboard']);
       },
       error: (err) => {
-        this.error = err.error?.message || 'Login failed. Please try again.';
+        this.error = err.error?.message || 'Invalid email or password';
         this.loading = false;
       },
     });

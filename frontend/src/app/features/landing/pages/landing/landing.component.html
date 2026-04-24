@@ -1,0 +1,62 @@
+<div class="landing">
+  <!-- Nav -->
+  <nav class="nav">
+    <div class="nav-left">
+      <span class="logo">CollabBoard</span>
+    </div>
+    <div class="nav-right">
+      <a routerLink="/login" class="nav-link">Sign in</a>
+      <a routerLink="/register" class="btn-cta">Get started free</a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-badge">Real-time collaborative whiteboard</div>
+    <h1>Think together,<br />create together</h1>
+    <p class="hero-sub">
+      A modern whiteboard for teams to brainstorm, sketch, and collaborate in real time.
+      Draw shapes, write text, share with a link — all saved automatically.
+    </p>
+    <div class="hero-actions">
+      <a routerLink="/register" class="btn-primary-lg">Start for free</a>
+      <a routerLink="/login" class="btn-secondary-lg">Sign in</a>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features">
+    <h2>Everything you need to collaborate</h2>
+    <div class="features-grid">
+      <div class="feature-card" *ngFor="let f of features">
+        <div class="feature-icon">{{ f.icon }}</div>
+        <h3>{{ f.title }}</h3>
+        <p>{{ f.desc }}</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Tools showcase -->
+  <section class="tools-section">
+    <h2>Powerful drawing tools</h2>
+    <p class="section-sub">Everything from freehand to precision shapes</p>
+    <div class="tools-showcase">
+      <div class="tool-pill" *ngFor="let t of ['Pen', 'Eraser', 'Rectangle', 'Circle', 'Line', 'Arrow', 'Text']">
+        {{ t }}
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta">
+    <h2>Ready to collaborate?</h2>
+    <p>Create your first board in seconds — no credit card required.</p>
+    <a routerLink="/register" class="btn-primary-lg">Get started free</a>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <span class="logo-sm">CollabBoard</span>
+    <span class="footer-text">Built by Vishwa Limbani</span>
+  </footer>
+</div>

@@ -39,7 +39,16 @@ interface CursorData {
   userId: string;
   userName: string;
 }
-
+interface StickyNote {
+  id: string;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  fontSize: number;
+}
 @Component({
   selector: 'app-board',
   standalone: true,
@@ -80,14 +89,14 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
   textInputY = 0;
   textInputValue = '';
   // Zoom and pan
-scale = 1;
-offsetX = 0;
-offsetY = 0;
-isPanning = false;
-panStartX = 0;
-panStartY = 0;
-spacePressed = false;
-showCopiedToast = false;
+  scale = 1;
+  offsetX = 0;
+  offsetY = 0;
+  isPanning = false;
+  panStartX = 0;
+  panStartY = 0;
+  spacePressed = false;
+  showCopiedToast = false;
 
   // Tools list
   tools = [
@@ -98,12 +107,9 @@ showCopiedToast = false;
     { id: 'line', label: 'Line', icon: '📏' },
     { id: 'arrow', label: 'Arrow', icon: '↗️' },
     { id: 'text', label: 'Text', icon: '🔤' },
+    { id: 'sticky', label: 'Sticky note', icon: '📌' },
   ];
-
-  colors = [
-    '#ffffff', '#ff4d4d', '#ff9f43', '#feca57',
-    '#48dbfb', '#7c5cfc', '#ff6b81', '#2ecc71',
-  ];
+  colors = ['#ffffff', '#ff4d4d', '#ff9f43', '#feca57', '#48dbfb', '#7c5cfc', '#ff6b81', '#2ecc71'];
 
   widths = [2, 4, 6, 10];
 
@@ -114,7 +120,14 @@ showCopiedToast = false;
   undoStack: DrawItem[] = [];
 
   private subscriptions: Subscription[] = [];
+  // Sticky notes
+  stickies: StickyNote[] = [];
+  draggingSticky: StickyNote | null = null;
+  editingSticky: StickyNote | null = null;
+  dragOffsetX = 0;
+  dragOffsetY = 0;
 
+  stickyColors = ['#feca57', '#ff6b81', '#48dbfb', '#2ecc71', '#ff9f43', '#a29bfe'];
   constructor(
     private route: ActivatedRoute,
     private router: Router,
@@ -160,47 +173,51 @@ showCopiedToast = false;
 
   // Keyboard shortcuts
   @HostListener('window:keydown', ['$event'])
-handleKeydown(event: KeyboardEvent): void {
-  if (this.showTextInput) return;
+  handleKeydown(event: KeyboardEvent): void {
+    if (this.showTextInput) return;
 
-  if (event.code === 'Space') {
-    event.preventDefault();
-    this.spacePressed = true;
+    if (event.code === 'Space') {
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') {
+        return; // Allow space in text inputs
+      }
+      event.preventDefault();
+      this.spacePressed = true;
+    }
+
+    if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      this.undo();
+    }
+    if (
+      ((event.ctrlKey || event.metaKey) && event.key === 'z' && event.shiftKey) ||
+      ((event.ctrlKey || event.metaKey) && event.key === 'y')
+    ) {
+      event.preventDefault();
+      this.redo();
+    }
+    // + / - for zoom
+    if ((event.ctrlKey || event.metaKey) && (event.key === '=' || event.key === '+')) {
+      event.preventDefault();
+      this.zoomIn();
+    }
+    if ((event.ctrlKey || event.metaKey) && event.key === '-') {
+      event.preventDefault();
+      this.zoomOut();
+    }
+    // 0 to reset zoom
+    if ((event.ctrlKey || event.metaKey) && event.key === '0') {
+      event.preventDefault();
+      this.resetZoom();
+    }
   }
 
-  if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
-    event.preventDefault();
-    this.undo();
+  @HostListener('window:keyup', ['$event'])
+  handleKeyup(event: KeyboardEvent): void {
+    if (event.code === 'Space') {
+      this.spacePressed = false;
+    }
   }
-  if (
-    ((event.ctrlKey || event.metaKey) && event.key === 'z' && event.shiftKey) ||
-    ((event.ctrlKey || event.metaKey) && event.key === 'y')
-  ) {
-    event.preventDefault();
-    this.redo();
-  }
-  // + / - for zoom
-  if ((event.ctrlKey || event.metaKey) && (event.key === '=' || event.key === '+')) {
-    event.preventDefault();
-    this.zoomIn();
-  }
-  if ((event.ctrlKey || event.metaKey) && event.key === '-') {
-    event.preventDefault();
-    this.zoomOut();
-  }
-  // 0 to reset zoom
-  if ((event.ctrlKey || event.metaKey) && event.key === '0') {
-    event.preventDefault();
-    this.resetZoom();
-  }
-}
-
-@HostListener('window:keyup', ['$event'])
-handleKeyup(event: KeyboardEvent): void {
-  if (event.code === 'Space') {
-    this.spacePressed = false;
-  }
-}
 
   // ─── CANVAS SETUP ───
   private setupCanvases(): void {
@@ -208,7 +225,7 @@ handleKeyup(event: KeyboardEvent): void {
     const previewCanvas = this.previewCanvasRef.nativeElement;
 
     const w = window.innerWidth;
-    const h = window.innerHeight - 60;
+    const h = window.innerHeight;
 
     mainCanvas.width = w;
     mainCanvas.height = h;
@@ -225,7 +242,7 @@ handleKeyup(event: KeyboardEvent): void {
 
     window.addEventListener('resize', () => {
       const nw = window.innerWidth;
-      const nh = window.innerHeight - 60;
+      const nh = window.innerHeight;
       const imageData = this.mainCtx.getImageData(0, 0, mainCanvas.width, mainCanvas.height);
       mainCanvas.width = nw;
       mainCanvas.height = nh;
@@ -275,26 +292,69 @@ handleKeyup(event: KeyboardEvent): void {
       this.onlineUsers = users;
       this.cdr.detectChanges();
     });
+    const loadStickySub = this.socketService
+      .on('load-stickies')
+      .subscribe((stickies: StickyNote[]) => {
+        console.log('Loading', stickies.length, 'sticky notes');
+        this.stickies = stickies;
+        this.cdr.detectChanges();
+      });
 
-    const clearSub = this.socketService.on('clear-board').subscribe(() => {
-      this.drawItems = [];
-      this.clearCanvas();
+    const addStickySub = this.socketService.on('add-sticky').subscribe((sticky: StickyNote) => {
+      this.stickies.push(sticky);
+      this.cdr.detectChanges();
     });
 
-    this.subscriptions.push(drawSub, loadSub, cursorSub, joinSub, leaveSub, roomSub, clearSub);
+    const updateStickySub = this.socketService
+      .on('update-sticky')
+      .subscribe((sticky: StickyNote) => {
+        const index = this.stickies.findIndex((s) => s.id === sticky.id);
+        if (index !== -1) {
+          this.stickies[index] = sticky;
+          this.cdr.detectChanges();
+        }
+      });
+
+    const deleteStickySub = this.socketService.on('delete-sticky').subscribe((data: any) => {
+      this.stickies = this.stickies.filter((s) => s.id !== data.stickyId);
+      this.cdr.detectChanges();
+    });
+    const clearSub = this.socketService.on('clear-board').subscribe(() => {
+      this.drawItems = [];
+      this.stickies = [];
+      this.clearCanvas();
+      this.cdr.detectChanges();
+    });
+
+    this.subscriptions.push(
+      drawSub,
+      loadSub,
+      cursorSub,
+      joinSub,
+      leaveSub,
+      roomSub,
+      clearSub,
+      loadStickySub,
+      addStickySub,
+      updateStickySub,
+      deleteStickySub,
+    );
   }
 
   // ─── MOUSE EVENTS ───
   onMouseDown(event: MouseEvent): void {
     // Handle panning with space+drag or middle click
-  if (this.spacePressed || event.button === 1) {
-    this.isPanning = true;
-    this.panStartX = event.clientX - this.offsetX;
-    this.panStartY = event.clientY - this.offsetY;
-    return;
-  }
+    if (this.spacePressed || event.button === 1) {
+      this.isPanning = true;
+      this.panStartX = event.clientX - this.offsetX;
+      this.panStartY = event.clientY - this.offsetY;
+      return;
+    }
     const point = this.getPoint(event);
-
+    if (this.currentTool === 'sticky') {
+      this.addSticky(point.x, point.y);
+      return;
+    }
     if (this.currentTool === 'text') {
       this.showTextInput = true;
       this.textInputX = point.x;
@@ -313,22 +373,21 @@ handleKeyup(event: KeyboardEvent): void {
     if (this.currentTool === 'pen' || this.currentTool === 'eraser') {
       this.mainCtx.beginPath();
       this.mainCtx.moveTo(point.x, point.y);
-     const eraserColor = getComputedStyle(document.documentElement)
-  .getPropertyValue('--canvas-bg').trim();
-this.mainCtx.strokeStyle =
-  this.currentTool === 'eraser' ? eraserColor : this.currentColor;
-      this.mainCtx.lineWidth =
-        this.currentTool === 'eraser' ? 20 : this.currentWidth;
+      const eraserColor = getComputedStyle(document.documentElement)
+        .getPropertyValue('--canvas-bg')
+        .trim();
+      this.mainCtx.strokeStyle = this.currentTool === 'eraser' ? eraserColor : this.currentColor;
+      this.mainCtx.lineWidth = this.currentTool === 'eraser' ? 20 : this.currentWidth;
     }
   }
 
   onMouseMove(event: MouseEvent): void {
     if (this.isPanning) {
-    this.offsetX = event.clientX - this.panStartX;
-    this.offsetY = event.clientY - this.panStartY;
-    this.applyTransform();
-    return;
-  }
+      this.offsetX = event.clientX - this.panStartX;
+      this.offsetY = event.clientY - this.panStartY;
+      this.applyTransform();
+      return;
+    }
     const point = this.getPoint(event);
 
     this.socketService.emit('cursor-move', {
@@ -370,9 +429,9 @@ this.mainCtx.strokeStyle =
 
   onMouseUp(event: MouseEvent): void {
     if (this.isPanning) {
-    this.isPanning = false;
-    return;
-  }
+      this.isPanning = false;
+      return;
+    }
     if (!this.isDrawing) return;
     this.isDrawing = false;
 
@@ -439,13 +498,17 @@ this.mainCtx.strokeStyle =
   onTouchStart(event: TouchEvent): void {
     event.preventDefault();
     const touch = event.touches[0];
-    this.onMouseDown(new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY }));
+    this.onMouseDown(
+      new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY }),
+    );
   }
 
   onTouchMove(event: TouchEvent): void {
     event.preventDefault();
     const touch = event.touches[0];
-    this.onMouseMove(new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY }));
+    this.onMouseMove(
+      new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY }),
+    );
   }
 
   onTouchEnd(event: TouchEvent): void {
@@ -697,80 +760,172 @@ this.mainCtx.strokeStyle =
     };
   }
   exportAsPng(): void {
-  const canvas = this.mainCanvasRef.nativeElement;
+    const canvas = this.mainCanvasRef.nativeElement;
 
-  // Create a temporary canvas with white/dark background
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = canvas.width;
-  tempCanvas.height = canvas.height;
-  const tempCtx = tempCanvas.getContext('2d')!;
+    // Create a temporary canvas with white/dark background
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tempCtx = tempCanvas.getContext('2d')!;
 
-  // Fill background (otherwise PNG has transparent background)
-  tempCtx.fillStyle = '#0f0f1a';
-  tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+    // Fill background (otherwise PNG has transparent background)
+    tempCtx.fillStyle = '#0f0f1a';
+    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
 
-  // Draw existing content on top
-  tempCtx.drawImage(canvas, 0, 0);
+    // Draw existing content on top
+    tempCtx.drawImage(canvas, 0, 0);
 
-  // Trigger download
-  const link = document.createElement('a');
-  link.download = `${this.board?.name || 'board'}-${Date.now()}.png`;
-  link.href = tempCanvas.toDataURL('image/png');
-  link.click();
-}
-shareBoard(): void {
-  if (!this.board) return;
-
-  const shareUrl = `${window.location.origin}/join/${this.board.inviteCode}`;
-  navigator.clipboard.writeText(shareUrl).then(() => {
-    this.showCopiedToast = true;
-    setTimeout(() => {
-      this.showCopiedToast = false;
-      this.cdr.detectChanges();
-    }, 2000);
-    this.cdr.detectChanges();
-  });
-}
-onWheel(event: WheelEvent): void {
-  event.preventDefault();
-  const delta = event.deltaY > 0 ? -0.1 : 0.1;
-  const newScale = Math.min(Math.max(this.scale + delta, 0.2), 5);
-
-  // Zoom towards mouse position
-  const point = this.getPoint(event as any);
-  this.offsetX -= point.x * (newScale - this.scale);
-  this.offsetY -= point.y * (newScale - this.scale);
-  this.scale = newScale;
-
-  this.applyTransform();
-  this.cdr.detectChanges();
-}
-
-zoomIn(): void {
-  this.scale = Math.min(this.scale + 0.2, 5);
-  this.applyTransform();
-  this.cdr.detectChanges();
-}
-
-zoomOut(): void {
-  this.scale = Math.max(this.scale - 0.2, 0.2);
-  this.applyTransform();
-  this.cdr.detectChanges();
-}
-
-resetZoom(): void {
-  this.scale = 1;
-  this.offsetX = 0;
-  this.offsetY = 0;
-  this.applyTransform();
-  this.cdr.detectChanges();
-}
-
-private applyTransform(): void {
-  const container = document.querySelector('.canvas-container') as HTMLElement;
-  if (container) {
-    container.style.transform = `translate(${this.offsetX}px, ${this.offsetY}px) scale(${this.scale})`;
-    container.style.transformOrigin = '0 0';
+    // Trigger download
+    const link = document.createElement('a');
+    link.download = `${this.board?.name || 'board'}-${Date.now()}.png`;
+    link.href = tempCanvas.toDataURL('image/png');
+    link.click();
   }
-}
+  shareBoard(): void {
+    if (!this.board) return;
+
+    const shareUrl = `${window.location.origin}/join/${this.board.inviteCode}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      this.showCopiedToast = true;
+      setTimeout(() => {
+        this.showCopiedToast = false;
+        this.cdr.detectChanges();
+      }, 2000);
+      this.cdr.detectChanges();
+    });
+  }
+  onWheel(event: WheelEvent): void {
+    event.preventDefault();
+    const delta = event.deltaY > 0 ? -0.1 : 0.1;
+    const newScale = Math.min(Math.max(this.scale + delta, 0.2), 5);
+
+    // Zoom towards mouse position
+    const point = this.getPoint(event as any);
+    this.offsetX -= point.x * (newScale - this.scale);
+    this.offsetY -= point.y * (newScale - this.scale);
+    this.scale = newScale;
+
+    this.applyTransform();
+    this.cdr.detectChanges();
+  }
+
+  zoomIn(): void {
+    this.scale = Math.min(this.scale + 0.2, 5);
+    this.applyTransform();
+    this.cdr.detectChanges();
+  }
+
+  zoomOut(): void {
+    this.scale = Math.max(this.scale - 0.2, 0.2);
+    this.applyTransform();
+    this.cdr.detectChanges();
+  }
+
+  resetZoom(): void {
+    this.scale = 1;
+    this.offsetX = 0;
+    this.offsetY = 0;
+    this.applyTransform();
+    this.cdr.detectChanges();
+  }
+
+  private applyTransform(): void {
+    const container = document.querySelector('.canvas-container') as HTMLElement;
+    if (container) {
+      container.style.transform = `translate(${this.offsetX}px, ${this.offsetY}px) scale(${this.scale})`;
+      container.style.transformOrigin = '0 0';
+    }
+  }
+  // ─── STICKY NOTES ───
+  addSticky(x: number, y: number): void {
+    const colorIndex = this.stickies.length % this.stickyColors.length;
+    const newSticky: StickyNote = {
+      id: Date.now().toString(),
+      text: '',
+      x: x - 100,
+      y: y - 75,
+      width: 200,
+      height: 150,
+      color: this.stickyColors[colorIndex],
+      fontSize: 14,
+    };
+
+    this.stickies.push(newSticky);
+    this.editingSticky = newSticky;
+
+    this.socketService.emit('add-sticky', {
+      boardId: this.boardId,
+      sticky: newSticky,
+    });
+
+    this.cdr.detectChanges();
+  }
+
+  onStickyMouseDown(event: MouseEvent, sticky: StickyNote): void {
+    event.stopPropagation();
+    if (this.editingSticky?.id === sticky.id) return;
+
+    this.draggingSticky = sticky;
+    this.dragOffsetX = event.clientX - sticky.x;
+    this.dragOffsetY = event.clientY - sticky.y;
+  }
+
+  onStickyDrag(event: MouseEvent): void {
+    if (!this.draggingSticky) return;
+
+    this.draggingSticky.x = event.clientX - this.dragOffsetX;
+    this.draggingSticky.y = event.clientY - this.dragOffsetY;
+    this.cdr.detectChanges();
+  }
+
+  onStickyDragEnd(): void {
+    if (!this.draggingSticky) return;
+
+    this.socketService.emit('update-sticky', {
+      boardId: this.boardId,
+      sticky: this.draggingSticky,
+    });
+
+    this.draggingSticky = null;
+  }
+
+  startEditSticky(event: MouseEvent, sticky: StickyNote): void {
+    event.stopPropagation();
+    this.editingSticky = sticky;
+    this.cdr.detectChanges();
+  }
+
+  onStickyTextChange(sticky: StickyNote): void {
+    this.socketService.emit('update-sticky', {
+      boardId: this.boardId,
+      sticky: sticky,
+    });
+  }
+
+  finishEditSticky(): void {
+    this.editingSticky = null;
+  }
+
+  deleteSticky(event: MouseEvent, sticky: StickyNote): void {
+    event.stopPropagation();
+    this.stickies = this.stickies.filter((s) => s.id !== sticky.id);
+
+    this.socketService.emit('delete-sticky', {
+      boardId: this.boardId,
+      stickyId: sticky.id,
+    });
+
+    this.cdr.detectChanges();
+  }
+  changeStickyColor(event: MouseEvent, sticky: StickyNote, color: string): void {
+    event.stopPropagation();
+    sticky.color = color;
+
+    this.socketService.emit('update-sticky', {
+      boardId: this.boardId,
+      sticky: sticky,
+    });
+
+    this.cdr.detectChanges();
+  }
 }

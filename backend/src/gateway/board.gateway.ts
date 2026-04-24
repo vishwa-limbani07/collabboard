@@ -14,9 +14,7 @@ import { ShapesService } from '../shapes/shapes.service';
     credentials: true,
   },
 })
-export class BoardGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+export class BoardGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
@@ -69,20 +67,41 @@ export class BoardGateway
       // Convert MongoDB documents to the format the frontend expects
       const strokes = savedStrokes.map((s) => ({
         id: s.strokeId,
-  points: s.points,
-  startX: s.startX || 0,
-  startY: s.startY || 0,
-  endX: s.endX || 0,
-  endY: s.endY || 0,
-  color: s.color,
-  width: s.width,
-  tool: s.tool,
-  filled: s.filled || false,
-  text: s.text || '',
-  fontSize: s.fontSize || 16,
+        points: s.points,
+        startX: s.startX || 0,
+        startY: s.startY || 0,
+        endX: s.endX || 0,
+        endY: s.endY || 0,
+        color: s.color,
+        width: s.width,
+        tool: s.tool,
+        filled: s.filled || false,
+        text: s.text || '',
+        fontSize: s.fontSize || 16,
       }));
 
       client.emit('load-strokes', strokes);
+
+      // Load sticky notes
+      try {
+        const savedStickies = await this.shapesService.getStickyByBoard(
+          data.boardId,
+        );
+        const stickies = savedStickies.map((s) => ({
+          id: s.stickyId,
+          text: s.text,
+          x: s.x,
+          y: s.y,
+          width: s.width,
+          height: s.height,
+          color: s.color,
+          fontSize: s.fontSize,
+        }));
+        client.emit('load-stickies', stickies);
+      } catch (err) {
+        console.error('Error loading stickies:', err);
+        client.emit('load-stickies', []);
+      }
       console.log(
         data.userName,
         'joined board',
@@ -134,13 +153,32 @@ export class BoardGateway
   }
 
   @SubscribeMessage('add-sticky')
-  handleAddSticky(client: Socket, data: any) {
+  async handleAddSticky(client: Socket, data: any) {
     client.to(data.boardId).emit('add-sticky', data.sticky);
+    try {
+      await this.shapesService.saveSticky(data.boardId, data.sticky);
+    } catch (err) {
+      console.error('Error saving sticky:', err);
+    }
   }
 
   @SubscribeMessage('update-sticky')
-  handleUpdateSticky(client: Socket, data: any) {
+  async handleUpdateSticky(client: Socket, data: any) {
     client.to(data.boardId).emit('update-sticky', data.sticky);
+    try {
+      await this.shapesService.updateSticky(data.boardId, data.sticky);
+    } catch (err) {
+      console.error('Error updating sticky:', err);
+    }
+  }
+  @SubscribeMessage('delete-sticky')
+  async handleDeleteSticky(client: Socket, data: any) {
+    client.to(data.boardId).emit('delete-sticky', { stickyId: data.stickyId });
+    try {
+      await this.shapesService.deleteSticky(data.boardId, data.stickyId);
+    } catch (err) {
+      console.error('Error deleting sticky:', err);
+    }
   }
 
   @SubscribeMessage('undo')
@@ -155,6 +193,8 @@ export class BoardGateway
     // NEW: Delete all strokes from database
     try {
       await this.shapesService.deleteStrokesByBoard(data.boardId);
+      await this.shapesService.deleteStickyByBoard(data.boardId);
+
       console.log('Cleared all strokes for board', data.boardId);
     } catch (err) {
       console.error('Error clearing strokes:', err);
