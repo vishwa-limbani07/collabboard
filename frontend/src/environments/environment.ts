@@ -1,4 +1,4 @@
-const isProd = window.location.hostname !== 'localhost';
+const isProd = typeof window !== 'undefined' && window.location.hostname !== 'localhost';
 
 export const environment = {
   production: isProd,
