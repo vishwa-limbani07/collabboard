@@ -1,5 +1,11 @@
+const isProd = window.location.hostname !== 'localhost';
+
 export const environment = {
-  production: false,
-  apiUrl: 'http://localhost:3001/api',
-  wsUrl: 'http://localhost:3001',   // WebSocket URL (new!)
+  production: isProd,
+  apiUrl: isProd
+    ? 'https://collabboard-api-6spq.onrender.com/api'
+    : 'http://localhost:3001/api',
+  wsUrl: isProd
+    ? 'https://collabboard-api-6spq.onrender.com'
+    : 'http://localhost:3001',
 };

@@ -1,5 +1,5 @@
 export const environment = {
   production: true,
-  apiUrl: 'https://your-render-backend.onrender.com/api',
-  wsUrl: 'https://your-render-backend.onrender.com',
+  apiUrl: 'https://collabboard-api-6spq.onrender.com/api',
+  wsUrl: 'https://collabboard-api-6spq.onrender.com',
 };
