@@ -4,10 +4,10 @@
     <div class="toolbar-left">
       <button class="btn-icon" (click)="goBack()" title="Back to dashboard">←</button>
       <span class="board-title">{{ board?.name || 'Loading...' }}</span>
+      <button class="share-btn" (click)="shareBoard()" title="Copy invite link">🔗 Share</button>
     </div>
 
     <div class="toolbar-center">
-      <!-- Tools -->
       <button
         *ngFor="let tool of tools"
         class="tool-btn"
@@ -18,17 +18,12 @@
 
       <div class="divider"></div>
 
-      <!-- Fill toggle (for shapes) -->
-      <button
-        class="tool-btn"
-        [class.active]="isFilled"
-        (click)="toggleFill()"
-        title="Toggle fill"
-      >{{ isFilled ? '◼️' : '◻️' }}</button>
+      <button class="tool-btn" [class.active]="isFilled" (click)="toggleFill()" title="Toggle fill">
+        {{ isFilled ? '◼️' : '◻️' }}
+      </button>
 
       <div class="divider"></div>
 
-      <!-- Colors -->
       <div
         *ngFor="let color of colors"
         class="color-dot"
@@ -39,7 +34,6 @@
 
       <div class="divider"></div>
 
-      <!-- Stroke widths -->
       <div
         *ngFor="let w of widths"
         class="width-btn"
@@ -51,22 +45,24 @@
 
       <div class="divider"></div>
 
-      <!-- Undo / Redo -->
       <button class="tool-btn" (click)="undo()" title="Undo (Ctrl+Z)">↩️</button>
       <button class="tool-btn" (click)="redo()" title="Redo (Ctrl+Y)">↪️</button>
 
       <div class="divider"></div>
 
+      <button class="tool-btn" (click)="exportAsPng()" title="Export as PNG">📥</button>
       <button class="tool-btn" (click)="clearBoard()" title="Clear board">🗑️</button>
     </div>
 
     <div class="toolbar-right">
+      <div class="zoom-controls">
+        <button class="tool-btn" (click)="zoomOut()" title="Zoom out">−</button>
+        <span class="zoom-level">{{ scale * 100 | number:'1.0-0' }}%</span>
+        <button class="tool-btn" (click)="zoomIn()" title="Zoom in">+</button>
+        <button class="tool-btn" (click)="resetZoom()" title="Reset zoom" style="font-size:12px">↺</button>
+      </div>
       <div class="online-users">
-        <div
-          *ngFor="let user of onlineUsers"
-          class="online-avatar"
-          [title]="user.userName"
-        >
+        <div *ngFor="let user of onlineUsers" class="online-avatar" [title]="user.userName">
           {{ getInitials(user.userName) }}
         </div>
       </div>
@@ -86,6 +82,7 @@
       (touchstart)="onTouchStart($event)"
       (touchmove)="onTouchMove($event)"
       (touchend)="onTouchEnd($event)"
+      (wheel)="onWheel($event)"
     ></canvas>
   </div>
 
@@ -114,4 +111,7 @@
     <div class="cursor-dot"></div>
     <span class="cursor-name">{{ cursor.userName }}</span>
   </div>
+
+  <!-- Copied toast -->
+  <div class="toast" *ngIf="showCopiedToast">Invite link copied to clipboard!</div>
 </div>

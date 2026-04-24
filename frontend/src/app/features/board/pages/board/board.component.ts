@@ -79,6 +79,15 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
   textInputX = 0;
   textInputY = 0;
   textInputValue = '';
+  // Zoom and pan
+scale = 1;
+offsetX = 0;
+offsetY = 0;
+isPanning = false;
+panStartX = 0;
+panStartY = 0;
+spacePressed = false;
+showCopiedToast = false;
 
   // Tools list
   tools = [
@@ -151,23 +160,47 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Keyboard shortcuts
   @HostListener('window:keydown', ['$event'])
-  handleKeydown(event: KeyboardEvent): void {
-    if (this.showTextInput) return;
+handleKeydown(event: KeyboardEvent): void {
+  if (this.showTextInput) return;
 
-    // Ctrl+Z = Undo
-    if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
-      event.preventDefault();
-      this.undo();
-    }
-    // Ctrl+Shift+Z or Ctrl+Y = Redo
-    if (
-      ((event.ctrlKey || event.metaKey) && event.key === 'z' && event.shiftKey) ||
-      ((event.ctrlKey || event.metaKey) && event.key === 'y')
-    ) {
-      event.preventDefault();
-      this.redo();
-    }
+  if (event.code === 'Space') {
+    event.preventDefault();
+    this.spacePressed = true;
   }
+
+  if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+    event.preventDefault();
+    this.undo();
+  }
+  if (
+    ((event.ctrlKey || event.metaKey) && event.key === 'z' && event.shiftKey) ||
+    ((event.ctrlKey || event.metaKey) && event.key === 'y')
+  ) {
+    event.preventDefault();
+    this.redo();
+  }
+  // + / - for zoom
+  if ((event.ctrlKey || event.metaKey) && (event.key === '=' || event.key === '+')) {
+    event.preventDefault();
+    this.zoomIn();
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key === '-') {
+    event.preventDefault();
+    this.zoomOut();
+  }
+  // 0 to reset zoom
+  if ((event.ctrlKey || event.metaKey) && event.key === '0') {
+    event.preventDefault();
+    this.resetZoom();
+  }
+}
+
+@HostListener('window:keyup', ['$event'])
+handleKeyup(event: KeyboardEvent): void {
+  if (event.code === 'Space') {
+    this.spacePressed = false;
+  }
+}
 
   // ─── CANVAS SETUP ───
   private setupCanvases(): void {
@@ -253,6 +286,13 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // ─── MOUSE EVENTS ───
   onMouseDown(event: MouseEvent): void {
+    // Handle panning with space+drag or middle click
+  if (this.spacePressed || event.button === 1) {
+    this.isPanning = true;
+    this.panStartX = event.clientX - this.offsetX;
+    this.panStartY = event.clientY - this.offsetY;
+    return;
+  }
     const point = this.getPoint(event);
 
     if (this.currentTool === 'text') {
@@ -281,6 +321,12 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   onMouseMove(event: MouseEvent): void {
+    if (this.isPanning) {
+    this.offsetX = event.clientX - this.panStartX;
+    this.offsetY = event.clientY - this.panStartY;
+    this.applyTransform();
+    return;
+  }
     const point = this.getPoint(event);
 
     this.socketService.emit('cursor-move', {
@@ -321,6 +367,10 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   onMouseUp(event: MouseEvent): void {
+    if (this.isPanning) {
+    this.isPanning = false;
+    return;
+  }
     if (!this.isDrawing) return;
     this.isDrawing = false;
 
@@ -644,4 +694,81 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
       y: event.clientY - rect.top,
     };
   }
+  exportAsPng(): void {
+  const canvas = this.mainCanvasRef.nativeElement;
+
+  // Create a temporary canvas with white/dark background
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = canvas.width;
+  tempCanvas.height = canvas.height;
+  const tempCtx = tempCanvas.getContext('2d')!;
+
+  // Fill background (otherwise PNG has transparent background)
+  tempCtx.fillStyle = '#0f0f1a';
+  tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+  // Draw existing content on top
+  tempCtx.drawImage(canvas, 0, 0);
+
+  // Trigger download
+  const link = document.createElement('a');
+  link.download = `${this.board?.name || 'board'}-${Date.now()}.png`;
+  link.href = tempCanvas.toDataURL('image/png');
+  link.click();
+}
+shareBoard(): void {
+  if (!this.board) return;
+
+  const shareUrl = `${window.location.origin}/join/${this.board.inviteCode}`;
+  navigator.clipboard.writeText(shareUrl).then(() => {
+    this.showCopiedToast = true;
+    setTimeout(() => {
+      this.showCopiedToast = false;
+      this.cdr.detectChanges();
+    }, 2000);
+    this.cdr.detectChanges();
+  });
+}
+onWheel(event: WheelEvent): void {
+  event.preventDefault();
+  const delta = event.deltaY > 0 ? -0.1 : 0.1;
+  const newScale = Math.min(Math.max(this.scale + delta, 0.2), 5);
+
+  // Zoom towards mouse position
+  const point = this.getPoint(event as any);
+  this.offsetX -= point.x * (newScale - this.scale);
+  this.offsetY -= point.y * (newScale - this.scale);
+  this.scale = newScale;
+
+  this.applyTransform();
+  this.cdr.detectChanges();
+}
+
+zoomIn(): void {
+  this.scale = Math.min(this.scale + 0.2, 5);
+  this.applyTransform();
+  this.cdr.detectChanges();
+}
+
+zoomOut(): void {
+  this.scale = Math.max(this.scale - 0.2, 0.2);
+  this.applyTransform();
+  this.cdr.detectChanges();
+}
+
+resetZoom(): void {
+  this.scale = 1;
+  this.offsetX = 0;
+  this.offsetY = 0;
+  this.applyTransform();
+  this.cdr.detectChanges();
+}
+
+private applyTransform(): void {
+  const container = document.querySelector('.canvas-container') as HTMLElement;
+  if (container) {
+    container.style.transform = `translate(${this.offsetX}px, ${this.offsetY}px) scale(${this.scale})`;
+    container.style.transformOrigin = '0 0';
+  }
+}
 }

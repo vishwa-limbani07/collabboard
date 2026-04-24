@@ -37,4 +37,12 @@ export const routes: Routes = [
       ),
     canActivate: [authGuard],
   },
+  {
+  path: 'join/:inviteCode',
+  loadComponent: () =>
+    import('./features/board/pages/join/join.component').then(
+      (m) => m.JoinComponent,
+    ),
+  canActivate: [authGuard],
+},
 ];

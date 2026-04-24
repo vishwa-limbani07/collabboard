@@ -137,8 +137,8 @@
   position: relative;
   width: 100%;
   height: calc(100vh - 60px);
+  will-change: transform;
 }
-
 .whiteboard-canvas {
   position: absolute;
   top: 0;
@@ -212,4 +212,60 @@
   font-size: 11px;
   font-weight: 600;
   border: 2px solid #1a1a2e;
+}
+
+.share-btn {
+  padding: 6px 12px;
+  background: rgba(124, 92, 252, 0.15);
+  color: #7c5cfc;
+  border: 1px solid rgba(124, 92, 252, 0.3);
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+
+  &:hover {
+    background: rgba(124, 92, 252, 0.25);
+  }
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2ecc71;
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 100;
+  animation: fadeInUp 0.3s ease;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 12px;
+  padding-right: 12px;
+  border-right: 1px solid #2a2a4a;
+}
+
+.zoom-level {
+  color: #888;
+  font-size: 12px;
+  min-width: 40px;
+  text-align: center;
 }
