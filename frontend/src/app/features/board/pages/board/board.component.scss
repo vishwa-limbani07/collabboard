@@ -6,7 +6,6 @@
   position: relative;
 }
 
-// ─── TOOLBAR ───
 .toolbar {
   height: 60px;
   background: #1a1a2e;
@@ -34,7 +33,7 @@
 .toolbar-center {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .toolbar-right {
@@ -49,15 +48,14 @@
   margin: 0 4px;
 }
 
-// ─── TOOL BUTTONS ───
 .tool-btn {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   border: none;
   background: transparent;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -73,8 +71,8 @@
 }
 
 .btn-icon {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
   border: none;
   background: transparent;
@@ -91,10 +89,9 @@
   }
 }
 
-// ─── COLOR DOTS ───
 .color-dot {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   cursor: pointer;
   border: 2px solid transparent;
@@ -110,10 +107,9 @@
   }
 }
 
-// ─── WIDTH BUTTONS ───
 .width-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 6px;
   display: flex;
   align-items: center;
@@ -137,9 +133,38 @@
 }
 
 // ─── CANVAS ───
+.canvas-container {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 60px);
+}
+
 .whiteboard-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+}
+
+.preview-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
   cursor: crosshair;
+}
+
+// ─── TEXT INPUT ───
+.canvas-text-input {
+  position: absolute;
+  background: transparent;
+  border: 1px dashed #7c5cfc;
+  border-radius: 4px;
+  padding: 4px 8px;
+  outline: none;
+  font-family: 'Inter', sans-serif;
+  min-width: 100px;
+  z-index: 5;
 }
 
 // ─── REMOTE CURSORS ───
@@ -170,7 +195,6 @@
   white-space: nowrap;
 }
 
-// ─── ONLINE USERS ───
 .online-users {
   display: flex;
   gap: 4px;

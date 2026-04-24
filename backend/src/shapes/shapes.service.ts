@@ -16,10 +16,17 @@ export class ShapesService {
         ? new Types.ObjectId(strokeData.userId)
         : null,
       strokeId: strokeData.id,
-      points: strokeData.points,
+      points: strokeData.points || [],
+      startX: strokeData.startX || 0,
+      startY: strokeData.startY || 0,
+      endX: strokeData.endX || 0,
+      endY: strokeData.endY || 0,
+      text: strokeData.text || '',
+      fontSize: strokeData.fontSize || 16,
       color: strokeData.color,
       width: strokeData.width,
       tool: strokeData.tool,
+      filled: strokeData.filled || false,
     });
   }
 
@@ -33,6 +40,15 @@ export class ShapesService {
   async deleteStrokesByBoard(boardId: string) {
     return this.strokeModel
       .deleteMany({ boardId: new Types.ObjectId(boardId) })
+      .exec();
+  }
+
+  async deleteStrokeById(boardId: string, strokeId: string) {
+    return this.strokeModel
+      .deleteOne({
+        boardId: new Types.ObjectId(boardId),
+        strokeId: strokeId,
+      })
       .exec();
   }
 }

@@ -12,9 +12,31 @@ export class Stroke extends Document {
   @Prop({ required: true })
   strokeId: string;
 
-  @Prop({ type: [{ x: Number, y: Number }], required: true })
+  // For pen tool
+  @Prop({ type: [{ x: Number, y: Number }], default: [] })
   points: { x: number; y: number }[];
 
+  // For shapes
+  @Prop({ default: 0 })
+  startX: number;
+
+  @Prop({ default: 0 })
+  startY: number;
+
+  @Prop({ default: 0 })
+  endX: number;
+
+  @Prop({ default: 0 })
+  endY: number;
+
+  // For text tool
+  @Prop({ default: '' })
+  text: string;
+
+  @Prop({ default: 16 })
+  fontSize: number;
+
+  // Common properties
   @Prop({ required: true, default: '#ffffff' })
   color: string;
 
@@ -23,6 +45,10 @@ export class Stroke extends Document {
 
   @Prop({ required: true, default: 'pen' })
   tool: string;
+
+  // Whether shape is filled or just outline
+  @Prop({ default: false })
+  filled: boolean;
 }
 
 export const StrokeSchema = SchemaFactory.createForClass(Stroke);

@@ -6,8 +6,10 @@ import {
   ElementRef,
   AfterViewInit,
   ChangeDetectorRef,
+  HostListener,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { BoardService } from '../../../../core/services/board.service';
@@ -16,12 +18,19 @@ import { AuthService } from '../../../../core/services/auth.service';
 import { Board } from '../../../../core/models/board.model';
 import { User } from '../../../../core/models/user.model';
 
-interface Stroke {
+interface DrawItem {
   id: string;
+  tool: string;
   points: { x: number; y: number }[];
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
   color: string;
   width: number;
-  tool: string;
+  filled: boolean;
+  text: string;
+  fontSize: number;
 }
 
 interface CursorData {
@@ -34,12 +43,14 @@ interface CursorData {
 @Component({
   selector: 'app-board',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './board.component.html',
   styleUrl: './board.component.scss',
 })
 export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
-  @ViewChild('canvas') canvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('mainCanvas') mainCanvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('previewCanvas') previewCanvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('textInput') textInputRef!: ElementRef<HTMLInputElement>;
 
   board: Board | null = null;
   currentUser: User | null = null;
@@ -47,31 +58,52 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Drawing state
   isDrawing = false;
-  currentStroke: Stroke | null = null;
-  strokes: Stroke[] = [];
-  ctx!: CanvasRenderingContext2D;
+  drawItems: DrawItem[] = [];
+  mainCtx!: CanvasRenderingContext2D;
+  previewCtx!: CanvasRenderingContext2D;
+
+  // Current drawing item
+  startX = 0;
+  startY = 0;
+  currentPoints: { x: number; y: number }[] = [];
 
   // Tool settings
   currentColor = '#ffffff';
   currentWidth = 3;
-  currentTool = 'pen'; // pen, eraser
+  currentTool = 'pen';
+  isFilled = false;
+  currentFontSize = 20;
 
-  // Colors palette
+  // Text input state
+  showTextInput = false;
+  textInputX = 0;
+  textInputY = 0;
+  textInputValue = '';
+
+  // Tools list
+  tools = [
+    { id: 'pen', label: 'Pen', icon: '✏️' },
+    { id: 'eraser', label: 'Eraser', icon: '🧹' },
+    { id: 'rect', label: 'Rectangle', icon: '⬜' },
+    { id: 'circle', label: 'Circle', icon: '⭕' },
+    { id: 'line', label: 'Line', icon: '📏' },
+    { id: 'arrow', label: 'Arrow', icon: '↗️' },
+    { id: 'text', label: 'Text', icon: '🔤' },
+  ];
+
   colors = [
     '#ffffff', '#ff4d4d', '#ff9f43', '#feca57',
     '#48dbfb', '#7c5cfc', '#ff6b81', '#2ecc71',
   ];
 
-  // Stroke widths
   widths = [2, 4, 6, 10];
 
-  // Live cursors from other users
   remoteCursors = new Map<string, CursorData>();
-
-  // Online users
   onlineUsers: { userId: string; userName: string }[] = [];
 
-  // Subscriptions
+  // Undo/Redo stacks
+  undoStack: DrawItem[] = [];
+
   private subscriptions: Subscription[] = [];
 
   constructor(
@@ -87,7 +119,6 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
     this.currentUser = this.authService.getCurrentUser();
     this.boardId = this.route.snapshot.paramMap.get('id') || '';
 
-    // Load board details
     this.boardService.getById(this.boardId).subscribe({
       next: (board) => {
         this.board = board;
@@ -98,7 +129,6 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
       },
     });
 
-    // Connect socket and join board room
     this.socketService.connect();
     this.socketService.emit('join-board', {
       boardId: this.boardId,
@@ -106,59 +136,95 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
       userName: this.currentUser?.name,
     });
 
-    // Listen for real-time events
     this.setupSocketListeners();
   }
 
   ngAfterViewInit(): void {
-    this.setupCanvas();
+    this.setupCanvases();
   }
 
   ngOnDestroy(): void {
-    // Leave the board room
     this.socketService.emit('leave-board', { boardId: this.boardId });
     this.socketService.disconnect();
-
-    // Clean up subscriptions
     this.subscriptions.forEach((s) => s.unsubscribe());
   }
 
+  // Keyboard shortcuts
+  @HostListener('window:keydown', ['$event'])
+  handleKeydown(event: KeyboardEvent): void {
+    if (this.showTextInput) return;
+
+    // Ctrl+Z = Undo
+    if ((event.ctrlKey || event.metaKey) && event.key === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      this.undo();
+    }
+    // Ctrl+Shift+Z or Ctrl+Y = Redo
+    if (
+      ((event.ctrlKey || event.metaKey) && event.key === 'z' && event.shiftKey) ||
+      ((event.ctrlKey || event.metaKey) && event.key === 'y')
+    ) {
+      event.preventDefault();
+      this.redo();
+    }
+  }
+
   // ─── CANVAS SETUP ───
-  private setupCanvas(): void {
-    const canvas = this.canvasRef.nativeElement;
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight - 60; // Account for toolbar
+  private setupCanvases(): void {
+    const mainCanvas = this.mainCanvasRef.nativeElement;
+    const previewCanvas = this.previewCanvasRef.nativeElement;
 
-    this.ctx = canvas.getContext('2d')!;
-    this.ctx.lineCap = 'round';
-    this.ctx.lineJoin = 'round';
+    const w = window.innerWidth;
+    const h = window.innerHeight - 60;
 
-    // Handle window resize
+    mainCanvas.width = w;
+    mainCanvas.height = h;
+    previewCanvas.width = w;
+    previewCanvas.height = h;
+
+    this.mainCtx = mainCanvas.getContext('2d')!;
+    this.previewCtx = previewCanvas.getContext('2d')!;
+
+    this.mainCtx.lineCap = 'round';
+    this.mainCtx.lineJoin = 'round';
+    this.previewCtx.lineCap = 'round';
+    this.previewCtx.lineJoin = 'round';
+
     window.addEventListener('resize', () => {
-      const imageData = this.ctx.getImageData(0, 0, canvas.width, canvas.height);
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight - 60;
-      this.ctx.putImageData(imageData, 0, 0);
-      this.ctx.lineCap = 'round';
-      this.ctx.lineJoin = 'round';
+      const nw = window.innerWidth;
+      const nh = window.innerHeight - 60;
+      const imageData = this.mainCtx.getImageData(0, 0, mainCanvas.width, mainCanvas.height);
+      mainCanvas.width = nw;
+      mainCanvas.height = nh;
+      previewCanvas.width = nw;
+      previewCanvas.height = nh;
+      this.mainCtx.putImageData(imageData, 0, 0);
+      this.mainCtx.lineCap = 'round';
+      this.mainCtx.lineJoin = 'round';
+      this.previewCtx.lineCap = 'round';
+      this.previewCtx.lineJoin = 'round';
     });
   }
 
   // ─── SOCKET LISTENERS ───
   private setupSocketListeners(): void {
-    // When another user draws
-    const drawSub = this.socketService.on('draw').subscribe((stroke: Stroke) => {
-      this.drawStroke(stroke);
-      this.strokes.push(stroke);
+    const drawSub = this.socketService.on('draw').subscribe((item: DrawItem) => {
+      this.drawItems.push(item);
+      this.drawItem(this.mainCtx, item);
     });
 
-    // When another user moves their cursor
+    const loadSub = this.socketService.on('load-strokes').subscribe((items: DrawItem[]) => {
+      console.log('Loading', items.length, 'saved items');
+      this.drawItems = items;
+      this.redrawCanvas();
+      this.cdr.detectChanges();
+    });
+
     const cursorSub = this.socketService.on('cursor-move').subscribe((cursor: CursorData) => {
       this.remoteCursors.set(cursor.userId, cursor);
       this.cdr.detectChanges();
     });
 
-    // When a user joins
     const joinSub = this.socketService.on('user-joined').subscribe((user: any) => {
       if (!this.onlineUsers.find((u) => u.userId === user.userId)) {
         this.onlineUsers.push(user);
@@ -166,57 +232,57 @@ export class BoardComponent implements OnInit, AfterViewInit, OnDestroy {
       }
     });
 
-    // When a user leaves
     const leaveSub = this.socketService.on('user-left').subscribe((user: any) => {
       this.onlineUsers = this.onlineUsers.filter((u) => u.userId !== user.userId);
       this.remoteCursors.delete(user.userId);
       this.cdr.detectChanges();
     });
 
-    // Current users in room
     const roomSub = this.socketService.on('room-users').subscribe((users: any[]) => {
       this.onlineUsers = users;
       this.cdr.detectChanges();
     });
-    // Load saved strokes when joining a board
-    const loadSub = this.socketService.on('load-strokes').subscribe((strokes: Stroke[]) => {
-      console.log('Loading', strokes.length, 'saved strokes');
-      this.strokes = strokes;
-      // Redraw all strokes on canvas
-      this.redrawCanvas();
-      this.cdr.detectChanges();
-    });
-    // Clear board event
+
     const clearSub = this.socketService.on('clear-board').subscribe(() => {
+      this.drawItems = [];
       this.clearCanvas();
     });
 
-this.subscriptions.push(drawSub, cursorSub, joinSub, leaveSub, roomSub, clearSub, loadSub);
+    this.subscriptions.push(drawSub, loadSub, cursorSub, joinSub, leaveSub, roomSub, clearSub);
   }
 
-  // ─── DRAWING METHODS ───
+  // ─── MOUSE EVENTS ───
   onMouseDown(event: MouseEvent): void {
-    this.isDrawing = true;
     const point = this.getPoint(event);
 
-    this.currentStroke = {
-      id: Date.now().toString(),
-      points: [point],
-      color: this.currentTool === 'eraser' ? '#0f0f1a' : this.currentColor,
-      width: this.currentTool === 'eraser' ? 20 : this.currentWidth,
-      tool: this.currentTool,
-    };
+    if (this.currentTool === 'text') {
+      this.showTextInput = true;
+      this.textInputX = point.x;
+      this.textInputY = point.y;
+      this.textInputValue = '';
+      this.cdr.detectChanges();
+      setTimeout(() => this.textInputRef?.nativeElement?.focus(), 10);
+      return;
+    }
 
-    this.ctx.beginPath();
-    this.ctx.moveTo(point.x, point.y);
-    this.ctx.strokeStyle = this.currentStroke.color;
-    this.ctx.lineWidth = this.currentStroke.width;
+    this.isDrawing = true;
+    this.startX = point.x;
+    this.startY = point.y;
+    this.currentPoints = [point];
+
+    if (this.currentTool === 'pen' || this.currentTool === 'eraser') {
+      this.mainCtx.beginPath();
+      this.mainCtx.moveTo(point.x, point.y);
+      this.mainCtx.strokeStyle =
+        this.currentTool === 'eraser' ? '#0f0f1a' : this.currentColor;
+      this.mainCtx.lineWidth =
+        this.currentTool === 'eraser' ? 20 : this.currentWidth;
+    }
   }
 
   onMouseMove(event: MouseEvent): void {
     const point = this.getPoint(event);
 
-    // Send cursor position to others
     this.socketService.emit('cursor-move', {
       boardId: this.boardId,
       cursor: {
@@ -227,105 +293,312 @@ this.subscriptions.push(drawSub, cursorSub, joinSub, leaveSub, roomSub, clearSub
       },
     });
 
-    if (!this.isDrawing || !this.currentStroke) return;
+    if (!this.isDrawing) return;
 
-    this.currentStroke.points.push(point);
-    this.ctx.lineTo(point.x, point.y);
-    this.ctx.stroke();
+    if (this.currentTool === 'pen' || this.currentTool === 'eraser') {
+      this.currentPoints.push(point);
+      this.mainCtx.lineTo(point.x, point.y);
+      this.mainCtx.stroke();
+    } else {
+      // For shapes: draw live preview on the preview canvas
+      this.clearPreview();
+      const previewItem: DrawItem = {
+        id: 'preview',
+        tool: this.currentTool,
+        points: [],
+        startX: this.startX,
+        startY: this.startY,
+        endX: point.x,
+        endY: point.y,
+        color: this.currentColor,
+        width: this.currentWidth,
+        filled: this.isFilled,
+        text: '',
+        fontSize: this.currentFontSize,
+      };
+      this.drawItem(this.previewCtx, previewItem);
+    }
   }
 
-  onMouseUp(): void {
-    if (!this.isDrawing || !this.currentStroke) return;
-
+  onMouseUp(event: MouseEvent): void {
+    if (!this.isDrawing) return;
     this.isDrawing = false;
 
-    // Only send if there are actual points drawn
-    if (this.currentStroke.points.length > 1) {
-      this.strokes.push(this.currentStroke);
+    const point = this.getPoint(event);
 
-      // Send the completed stroke to other users
-      this.socketService.emit('draw', {
-        boardId: this.boardId,
-        stroke: this.currentStroke,
-      });
+    let newItem: DrawItem;
+
+    if (this.currentTool === 'pen' || this.currentTool === 'eraser') {
+      if (this.currentPoints.length < 2) return;
+      newItem = {
+        id: Date.now().toString(),
+        tool: this.currentTool,
+        points: this.currentPoints,
+        startX: 0,
+        startY: 0,
+        endX: 0,
+        endY: 0,
+        color: this.currentTool === 'eraser' ? '#0f0f1a' : this.currentColor,
+        width: this.currentTool === 'eraser' ? 20 : this.currentWidth,
+        filled: false,
+        text: '',
+        fontSize: this.currentFontSize,
+      };
+    } else {
+      // Shape tool
+      this.clearPreview();
+      newItem = {
+        id: Date.now().toString(),
+        tool: this.currentTool,
+        points: [],
+        startX: this.startX,
+        startY: this.startY,
+        endX: point.x,
+        endY: point.y,
+        color: this.currentColor,
+        width: this.currentWidth,
+        filled: this.isFilled,
+        text: '',
+        fontSize: this.currentFontSize,
+      };
+      // Draw finalized shape on main canvas
+      this.drawItem(this.mainCtx, newItem);
     }
 
-    this.currentStroke = null;
+    this.drawItems.push(newItem);
+    this.undoStack = []; // Clear redo stack on new action
+
+    this.socketService.emit('draw', {
+      boardId: this.boardId,
+      stroke: newItem,
+    });
+
+    this.currentPoints = [];
   }
 
   onMouseLeave(): void {
-    this.onMouseUp();
+    if (this.isDrawing) {
+      this.isDrawing = false;
+      this.clearPreview();
+    }
   }
 
-  // Touch support for mobile
+  // Touch support
   onTouchStart(event: TouchEvent): void {
     event.preventDefault();
     const touch = event.touches[0];
-    const mouseEvent = new MouseEvent('mousedown', {
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-    });
-    this.onMouseDown(mouseEvent);
+    this.onMouseDown(new MouseEvent('mousedown', { clientX: touch.clientX, clientY: touch.clientY }));
   }
 
   onTouchMove(event: TouchEvent): void {
     event.preventDefault();
     const touch = event.touches[0];
-    const mouseEvent = new MouseEvent('mousemove', {
-      clientX: touch.clientX,
-      clientY: touch.clientY,
-    });
-    this.onMouseMove(mouseEvent);
+    this.onMouseMove(new MouseEvent('mousemove', { clientX: touch.clientX, clientY: touch.clientY }));
   }
 
-  onTouchEnd(): void {
-    this.onMouseUp();
+  onTouchEnd(event: TouchEvent): void {
+    const touch = event.changedTouches[0];
+    this.onMouseUp(new MouseEvent('mouseup', { clientX: touch.clientX, clientY: touch.clientY }));
   }
 
-  // ─── HELPER METHODS ───
-  private getPoint(event: MouseEvent): { x: number; y: number } {
-    const canvas = this.canvasRef.nativeElement;
-    const rect = canvas.getBoundingClientRect();
-    return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top,
-    };
-  }
-
-  private drawStroke(stroke: Stroke): void {
-    if (stroke.points.length < 2) return;
-
-    this.ctx.beginPath();
-    this.ctx.strokeStyle = stroke.color;
-    this.ctx.lineWidth = stroke.width;
-    this.ctx.lineCap = 'round';
-    this.ctx.lineJoin = 'round';
-
-    this.ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-    for (let i = 1; i < stroke.points.length; i++) {
-      this.ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+  // ─── TEXT TOOL ───
+  submitText(): void {
+    if (!this.textInputValue.trim()) {
+      this.showTextInput = false;
+      return;
     }
-    this.ctx.stroke();
+
+    const newItem: DrawItem = {
+      id: Date.now().toString(),
+      tool: 'text',
+      points: [],
+      startX: this.textInputX,
+      startY: this.textInputY,
+      endX: 0,
+      endY: 0,
+      color: this.currentColor,
+      width: this.currentWidth,
+      filled: false,
+      text: this.textInputValue,
+      fontSize: this.currentFontSize,
+    };
+
+    this.drawItems.push(newItem);
+    this.drawItem(this.mainCtx, newItem);
+    this.undoStack = [];
+
+    this.socketService.emit('draw', {
+      boardId: this.boardId,
+      stroke: newItem,
+    });
+
+    this.showTextInput = false;
+    this.textInputValue = '';
+  }
+
+  onTextKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      this.submitText();
+    } else if (event.key === 'Escape') {
+      this.showTextInput = false;
+    }
+  }
+
+  // ─── DRAWING METHODS ───
+  drawItem(ctx: CanvasRenderingContext2D, item: DrawItem): void {
+    ctx.save();
+    ctx.strokeStyle = item.color;
+    ctx.fillStyle = item.color;
+    ctx.lineWidth = item.width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    switch (item.tool) {
+      case 'pen':
+      case 'eraser':
+        this.drawPen(ctx, item);
+        break;
+      case 'rect':
+        this.drawRect(ctx, item);
+        break;
+      case 'circle':
+        this.drawCircle(ctx, item);
+        break;
+      case 'line':
+        this.drawLine(ctx, item);
+        break;
+      case 'arrow':
+        this.drawArrow(ctx, item);
+        break;
+      case 'text':
+        this.drawText(ctx, item);
+        break;
+    }
+
+    ctx.restore();
+  }
+
+  private drawPen(ctx: CanvasRenderingContext2D, item: DrawItem): void {
+    if (item.points.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(item.points[0].x, item.points[0].y);
+    for (let i = 1; i < item.points.length; i++) {
+      ctx.lineTo(item.points[i].x, item.points[i].y);
+    }
+    ctx.stroke();
+  }
+
+  private drawRect(ctx: CanvasRenderingContext2D, item: DrawItem): void {
+    const x = Math.min(item.startX, item.endX);
+    const y = Math.min(item.startY, item.endY);
+    const w = Math.abs(item.endX - item.startX);
+    const h = Math.abs(item.endY - item.startY);
+
+    if (item.filled) {
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(x, y, w, h);
+      ctx.globalAlpha = 1;
+    }
+    ctx.strokeRect(x, y, w, h);
+  }
+
+  private drawCircle(ctx: CanvasRenderingContext2D, item: DrawItem): void {
+    const cx = (item.startX + item.endX) / 2;
+    const cy = (item.startY + item.endY) / 2;
+    const rx = Math.abs(item.endX - item.startX) / 2;
+    const ry = Math.abs(item.endY - item.startY) / 2;
+
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+
+    if (item.filled) {
+      ctx.globalAlpha = 0.3;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.stroke();
+  }
+
+  private drawLine(ctx: CanvasRenderingContext2D, item: DrawItem): void {
+    ctx.beginPath();
+    ctx.moveTo(item.startX, item.startY);
+    ctx.lineTo(item.endX, item.endY);
+    ctx.stroke();
+  }
+
+  private drawArrow(ctx: CanvasRenderingContext2D, item: DrawItem): void {
+    // Draw the line
+    ctx.beginPath();
+    ctx.moveTo(item.startX, item.startY);
+    ctx.lineTo(item.endX, item.endY);
+    ctx.stroke();
+
+    // Draw the arrowhead
+    const angle = Math.atan2(item.endY - item.startY, item.endX - item.startX);
+    const headLen = 15;
+
+    ctx.beginPath();
+    ctx.moveTo(item.endX, item.endY);
+    ctx.lineTo(
+      item.endX - headLen * Math.cos(angle - Math.PI / 6),
+      item.endY - headLen * Math.sin(angle - Math.PI / 6),
+    );
+    ctx.moveTo(item.endX, item.endY);
+    ctx.lineTo(
+      item.endX - headLen * Math.cos(angle + Math.PI / 6),
+      item.endY - headLen * Math.sin(angle + Math.PI / 6),
+    );
+    ctx.stroke();
+  }
+
+  private drawText(ctx: CanvasRenderingContext2D, item: DrawItem): void {
+    ctx.font = `${item.fontSize}px Inter, sans-serif`;
+    ctx.fillText(item.text, item.startX, item.startY);
+  }
+
+  // ─── CANVAS OPERATIONS ───
+  private clearPreview(): void {
+    const canvas = this.previewCanvasRef.nativeElement;
+    this.previewCtx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
   private clearCanvas(): void {
-    const canvas = this.canvasRef.nativeElement;
-    this.ctx.clearRect(0, 0, canvas.width, canvas.height);
-    this.strokes = [];
+    const canvas = this.mainCanvasRef.nativeElement;
+    this.mainCtx.clearRect(0, 0, canvas.width, canvas.height);
+    this.drawItems = [];
   }
-private redrawCanvas(): void {
-  const canvas = this.canvasRef.nativeElement;
-  this.ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Redraw all saved strokes
-  for (const stroke of this.strokes) {
-    this.drawStroke(stroke);
+  private redrawCanvas(): void {
+    const canvas = this.mainCanvasRef.nativeElement;
+    this.mainCtx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const item of this.drawItems) {
+      this.drawItem(this.mainCtx, item);
+    }
   }
-}
+
+  // ─── UNDO / REDO ───
+  undo(): void {
+    if (this.drawItems.length === 0) return;
+    const item = this.drawItems.pop()!;
+    this.undoStack.push(item);
+    this.redrawCanvas();
+    this.socketService.emit('undo', { boardId: this.boardId, actionId: item.id });
+  }
+
+  redo(): void {
+    if (this.undoStack.length === 0) return;
+    const item = this.undoStack.pop()!;
+    this.drawItems.push(item);
+    this.drawItem(this.mainCtx, item);
+    this.socketService.emit('draw', { boardId: this.boardId, stroke: item });
+  }
+
   // ─── TOOLBAR ACTIONS ───
   setColor(color: string): void {
     this.currentColor = color;
-    this.currentTool = 'pen';
+    if (this.currentTool === 'eraser') {
+      this.currentTool = 'pen';
+    }
   }
 
   setWidth(width: number): void {
@@ -334,6 +607,11 @@ private redrawCanvas(): void {
 
   setTool(tool: string): void {
     this.currentTool = tool;
+    this.showTextInput = false;
+  }
+
+  toggleFill(): void {
+    this.isFilled = !this.isFilled;
   }
 
   clearBoard(): void {
@@ -356,5 +634,14 @@ private redrawCanvas(): void {
 
   getCursorArray(): CursorData[] {
     return Array.from(this.remoteCursors.values());
+  }
+
+  private getPoint(event: MouseEvent): { x: number; y: number } {
+    const canvas = this.mainCanvasRef.nativeElement;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
   }
 }

@@ -7,19 +7,24 @@
     </div>
 
     <div class="toolbar-center">
-      <!-- Tool selection -->
+      <!-- Tools -->
+      <button
+        *ngFor="let tool of tools"
+        class="tool-btn"
+        [class.active]="currentTool === tool.id"
+        (click)="setTool(tool.id)"
+        [title]="tool.label"
+      >{{ tool.icon }}</button>
+
+      <div class="divider"></div>
+
+      <!-- Fill toggle (for shapes) -->
       <button
         class="tool-btn"
-        [class.active]="currentTool === 'pen'"
-        (click)="setTool('pen')"
-        title="Pen"
-      >✏️</button>
-      <button
-        class="tool-btn"
-        [class.active]="currentTool === 'eraser'"
-        (click)="setTool('eraser')"
-        title="Eraser"
-      >🧹</button>
+        [class.active]="isFilled"
+        (click)="toggleFill()"
+        title="Toggle fill"
+      >{{ isFilled ? '◼️' : '◻️' }}</button>
 
       <div class="divider"></div>
 
@@ -28,7 +33,7 @@
         *ngFor="let color of colors"
         class="color-dot"
         [style.background]="color"
-        [class.active]="currentColor === color && currentTool === 'pen'"
+        [class.active]="currentColor === color && currentTool !== 'eraser'"
         (click)="setColor(color)"
       ></div>
 
@@ -46,11 +51,16 @@
 
       <div class="divider"></div>
 
+      <!-- Undo / Redo -->
+      <button class="tool-btn" (click)="undo()" title="Undo (Ctrl+Z)">↩️</button>
+      <button class="tool-btn" (click)="redo()" title="Redo (Ctrl+Y)">↪️</button>
+
+      <div class="divider"></div>
+
       <button class="tool-btn" (click)="clearBoard()" title="Clear board">🗑️</button>
     </div>
 
     <div class="toolbar-right">
-      <!-- Online users -->
       <div class="online-users">
         <div
           *ngFor="let user of onlineUsers"
@@ -63,18 +73,36 @@
     </div>
   </div>
 
-  <!-- Canvas -->
-  <canvas
-    #canvas
-    class="whiteboard-canvas"
-    (mousedown)="onMouseDown($event)"
-    (mousemove)="onMouseMove($event)"
-    (mouseup)="onMouseUp()"
-    (mouseleave)="onMouseLeave()"
-    (touchstart)="onTouchStart($event)"
-    (touchmove)="onTouchMove($event)"
-    (touchend)="onTouchEnd()"
-  ></canvas>
+  <!-- Canvas layers -->
+  <div class="canvas-container">
+    <canvas #mainCanvas class="whiteboard-canvas"></canvas>
+    <canvas
+      #previewCanvas
+      class="preview-canvas"
+      (mousedown)="onMouseDown($event)"
+      (mousemove)="onMouseMove($event)"
+      (mouseup)="onMouseUp($event)"
+      (mouseleave)="onMouseLeave()"
+      (touchstart)="onTouchStart($event)"
+      (touchmove)="onTouchMove($event)"
+      (touchend)="onTouchEnd($event)"
+    ></canvas>
+  </div>
+
+  <!-- Text input overlay -->
+  <input
+    *ngIf="showTextInput"
+    #textInput
+    class="canvas-text-input"
+    [style.left.px]="textInputX"
+    [style.top.px]="textInputY + 60"
+    [(ngModel)]="textInputValue"
+    (keydown)="onTextKeydown($event)"
+    (blur)="submitText()"
+    [style.color]="currentColor"
+    [style.fontSize.px]="currentFontSize"
+    placeholder="Type here..."
+  />
 
   <!-- Remote cursors -->
   <div

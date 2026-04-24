@@ -69,10 +69,17 @@ export class BoardGateway
       // Convert MongoDB documents to the format the frontend expects
       const strokes = savedStrokes.map((s) => ({
         id: s.strokeId,
-        points: s.points,
-        color: s.color,
-        width: s.width,
-        tool: s.tool,
+  points: s.points,
+  startX: s.startX || 0,
+  startY: s.startY || 0,
+  endX: s.endX || 0,
+  endY: s.endY || 0,
+  color: s.color,
+  width: s.width,
+  tool: s.tool,
+  filled: s.filled || false,
+  text: s.text || '',
+  fontSize: s.fontSize || 16,
       }));
 
       client.emit('load-strokes', strokes);
